@@ -102,7 +102,7 @@ def ask_gemini(system: str, user_message: str) -> str:
         return None
 
 # ── اسم‌هایی که ربات باهاشون شناخته میشه ────────────────────────────────────
-BOT_NAMES = ["ربات", "بات", "bot", "مatin", "matin bot", "ربات متین"]
+BOT_NAMES = ["ربات", "بات", "bot", "matin bot", "ربات متین"]
 
 MATIN_KEYWORDS = ["متین", "matin", "m_a_t_i_n"]
 
