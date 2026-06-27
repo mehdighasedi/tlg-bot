@@ -22,7 +22,7 @@ GEMINI_KEY     = os.getenv("GEMINI_API_KEY", "")
 COUNTER_FILE = "matin_counter.json"
 
 genai.configure(api_key=GEMINI_KEY)
-gemini = genai.GenerativeModel("gemini-2.0-flash")
+gemini = genai.GenerativeModel("gemini-2.0-flash-lite")
 
 # ── شمارنده ──────────────────────────────────────────────────────────────────
 def load_counter():
