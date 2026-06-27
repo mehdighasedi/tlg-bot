@@ -104,6 +104,12 @@ def ask_gemini(system: str, user_message: str) -> str:
 # ── اسم‌هایی که ربات باهاشون شناخته میشه ────────────────────────────────────
 BOT_NAMES = ["ربات", "بات", "bot", "مatin", "matin bot", "ربات متین"]
 
+MATIN_KEYWORDS = ["متین", "matin", "m_a_t_i_n"]
+
+def mentions_matin(text: str) -> bool:
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in MATIN_KEYWORDS)
+
 def should_respond(text: str, bot_username: str, msg) -> bool:
     text_lower = text.lower()
 
@@ -111,10 +117,14 @@ def should_respond(text: str, bot_username: str, msg) -> bool:
     if bot_username and f"@{bot_username}".lower() in text_lower:
         return True
 
-    # صدا زدن با اسم
+    # صدا زدن با اسم ربات
     for name in BOT_NAMES:
         if name in text_lower:
             return True
+
+    # ذکر اسم متین
+    if mentions_matin(text):
+        return True
 
     # ریپلای روی پیام ربات
     if (msg.reply_to_message and
@@ -173,10 +183,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         sender_name = user.first_name or user.username or "یه کاربر"
         matin_count = get_count()
+        has_matin = mentions_matin(clean_text)
+
+        if has_matin:
+            extra = (
+                f"\nتوجه: این کاربر اسم متین رو برده. "
+                f"جوابت باید هم به حرف کاربر بپردازه هم متین رو مسخره کنه و خوار کنه. "
+                f"متین امروز {matin_count} بار تو گروه زر زده."
+            )
+        else:
+            extra = f"\nضمناً متین امروز {matin_count} بار تو گروه پیام داده."
 
         prompt = (
-            f"{sender_name} در گروه این رو گفت: «{clean_text or 'سلام'}»{replied_text}\n"
-            f"ضمناً متین امروز {matin_count} بار تو گروه پیام داده."
+            f"{sender_name} در گروه این رو گفت: «{clean_text or 'سلام'}»{replied_text}{extra}"
         )
 
         reply = ask_gemini(SYSTEM_MENTION, prompt)
