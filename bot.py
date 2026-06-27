@@ -101,6 +101,31 @@ def ask_gemini(system: str, user_message: str) -> str:
         logger.error(f"Gemini error: {e}")
         return None
 
+# ── اسم‌هایی که ربات باهاشون شناخته میشه ────────────────────────────────────
+BOT_NAMES = ["ربات", "بات", "bot", "مatin", "matin bot", "ربات متین"]
+
+def should_respond(text: str, bot_username: str, msg) -> bool:
+    text_lower = text.lower()
+
+    # منشن مستقیم
+    if bot_username and f"@{bot_username}".lower() in text_lower:
+        return True
+
+    # صدا زدن با اسم
+    for name in BOT_NAMES:
+        if name in text_lower:
+            return True
+
+    # ریپلای روی پیام ربات
+    if (msg.reply_to_message and
+            msg.reply_to_message.from_user and
+            msg.reply_to_message.from_user.username and
+            bot_username and
+            msg.reply_to_message.from_user.username.lower() == bot_username.lower()):
+        return True
+
+    return False
+
 # ── هندلر پیام‌ها ────────────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -116,8 +141,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_matin = True
     elif user.username and user.username.lower() == MATIN_USERNAME.lower():
         is_matin = True
-
-    is_mention = bot_username and f"@{bot_username}".lower() in text.lower()
 
     if is_matin:
         count = get_and_increment()
@@ -137,12 +160,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await msg.reply_text(reply)
 
-    elif is_mention:
-        clean_text = text.replace(f"@{bot_username}", "").strip()
+    elif should_respond(text, bot_username, msg):
+        # تمیز کردن منشن از متن
+        clean_text = text
+        if bot_username:
+            clean_text = clean_text.replace(f"@{bot_username}", "").strip()
+
+        # اگه ریپلای بود، متن پیام اصلی رو هم اضافه کن
+        replied_text = ""
+        if (msg.reply_to_message and msg.reply_to_message.text):
+            replied_text = f"\nاین رو در جواب پیام قبلیم گفت: «{msg.reply_to_message.text}»"
+
+        sender_name = user.first_name or user.username or "یه کاربر"
         matin_count = get_count()
 
         prompt = (
-            f"یه کاربر در گروه تلگرام منشنم کرد و گفت: «{clean_text or 'سلام'}»\n"
+            f"{sender_name} در گروه این رو گفت: «{clean_text or 'سلام'}»{replied_text}\n"
             f"ضمناً متین امروز {matin_count} بار تو گروه پیام داده."
         )
 
