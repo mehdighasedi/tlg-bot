@@ -98,7 +98,7 @@ def ask_gemini(system: str, user_message: str) -> str:
         response = gemini.generate_content(full_prompt)
         return response.text
     except Exception as e:
-        logger.error(f"Gemini error: {e}")
+        logger.error(f"Gemini error: {type(e).__name__}: {e}")
         return None
 
 # ── اسم‌هایی که ربات باهاشون شناخته میشه ────────────────────────────────────
