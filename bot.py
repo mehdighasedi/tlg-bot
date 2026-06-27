@@ -1,7 +1,7 @@
 import logging
-import random
 import json
 import os
+import google.generativeai as genai
 from datetime import datetime, date
 from telegram import Update
 from telegram.ext import (
@@ -14,14 +14,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── اسم و آیدی متین (آیدی عددی یا یوزرنیم بدون @) ──────────────────────────
-MATIN_USERNAME = os.getenv("MATIN_USERNAME", "matin_username")  # یوزرنیم متین بدون @
-MATIN_USER_ID  = int(os.getenv("MATIN_USER_ID", "0"))           # آیدی عددی متین (اختیاری)
+MATIN_USERNAME = os.getenv("MATIN_USERNAME", "matin_username")
+MATIN_USER_ID  = int(os.getenv("MATIN_USER_ID", "0"))
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
+GEMINI_KEY     = os.getenv("GEMINI_API_KEY", "")
 
 COUNTER_FILE = "matin_counter.json"
 
-# ── لود/ذخیره شمارنده ────────────────────────────────────────────────────────
+genai.configure(api_key=GEMINI_KEY)
+gemini = genai.GenerativeModel("gemini-1.5-flash")
+
+# ── شمارنده ──────────────────────────────────────────────────────────────────
 def load_counter():
     if os.path.exists(COUNTER_FILE):
         with open(COUNTER_FILE, "r") as f:
@@ -40,87 +43,63 @@ def get_and_increment():
     save_counter(data)
     return data["count"]
 
-# ── تشخیص صبح/ظهر/شب ────────────────────────────────────────────────────────
-def time_greeting():
+def get_count():
+    data = load_counter()
+    if data["date"] != str(date.today()):
+        return 0
+    return data["count"]
+
+# ── تشخیص ساعت ───────────────────────────────────────────────────────────────
+def time_of_day():
     h = datetime.now().hour
     if 5 <= h < 12:
-        return "morning"
+        return "صبح"
     elif 12 <= h < 18:
-        return "noon"
+        return "ظهر"
     else:
-        return "night"
+        return "شب"
 
-# ── ایموجی‌های رندوم ──────────────────────────────────────────────────────────
-EMOJIS = ["💀", "🤡", "🗑️", "🤦", "😂", "👎", "🤮", "🙄", "💩", "😬", "🫠", "🤣", "😐", "🤧", "🥴"]
+# ── سیستم پرامپت برای وقتی متین پیام میده ───────────────────────────────────
+SYSTEM_MATIN = """تو یه ربات تلگرامی فارسی هستی به اسم "ربات متین" که وظیفه‌ات اینه که متین رو تو گروه مسخره کنی.
 
-def rand_emoji(n=1):
-    return " ".join(random.choices(EMOJIS, k=n))
+متین یه آدم کسخول، خنگ، پرحرف و بی‌خودیه که هر چرتی به ذهنش میرسه تو گروه میگه.
 
-# ── جواب‌های وقتی متین پیام میده ─────────────────────────────────────────────
-MATIN_SPEAKS = {
-    "morning": [
-        "اوف، باز متین اومد زر بزنه از صبح {rand_emoji}",
-        "صبح شد و متین کسخول شروع کرد به بد و بیراه {rand_emoji}",
-        "بچه‌ها متین بیدار شد، خدا به داد گروه برسه {rand_emoji}",
-        "اینقدر متین حرف میزنه آدم صبح‌ها بی‌خواب میشه {rand_emoji}",
-        "متین جان صبح بخیر، یعنی میشه یه روز ساکت باشی؟ {rand_emoji}",
-    ],
-    "noon": [
-        "اوف دوباره این اومد، ظهر هم ولمون نمیکنه {rand_emoji}",
-        "متین ظهره، ناهار نخور، زر نزن {rand_emoji}",
-        "باز این متین زر زد، کسخول‌ترین آدم گروهه {rand_emoji}",
-        "بچه‌ها ببینید متین چی میگه 😂 خودش هم نمیفهمه {rand_emoji}",
-        "یا خدا، متین دوباره پیام داد {rand_emoji}",
-    ],
-    "night": [
-        "متین شبم ولمون نمیکنه، دیوونه‌ی کامله {rand_emoji}",
-        "شب شد و متین کسخول هنوز داره زر میزنه {rand_emoji}",
-        "برو بخواب متین، همه خسته‌ان از دستت {rand_emoji}",
-        "اوف دوباره این اومد، نمیخوابی؟ {rand_emoji}",
-        "متین جان شبه، برو گم شو {rand_emoji}",
-    ],
-}
+وقتی متین پیام میده:
+- با یه جمله کوتاه و تیز شروع کن که نشون بده حالت از پیام متین به هم خورده
+- پیام متین رو به سخره بگیر، تحلیل کن، و نشون بده چقدر بی‌معنیه
+- از کلماتی مثل کسخول، خنگول، دیوونه، کله‌پوک، بی‌عرضه، مزخرف استفاده کن
+- لحن باید خنده‌دار و بامزه باشه نه پرخاشگرانه
+- حداکثر ۳-۴ جمله بنویس
+- فارسی محاوره‌ای بنویس
+- آخرش یه چیز طعنه‌آمیز بگو
+- از ایموجی‌های 💀🤡🗑️😂👎🤮🙄💩 استفاده کن"""
 
-# ── جواب‌های وقتی بات رو منشن میکنن ─────────────────────────────────────────
-MENTION_RESPONSES = [
-    "چیه؟ داری از متین دفاع میکنی؟ متین کسخوله {rand_emoji}",
-    "من فقط یه چیز میدونم: متین دیوونه‌ست {rand_emoji}",
-    "متین؟ آره میشناسمش، بزرگترین مزخرف‌گوی گروهه {rand_emoji}",
-    "الان وقت دفاع از متینه؟ {rand_emoji} برو بابا",
-    "متین اونقدر بی‌خود حرف میزنه که مغزم درد میگیره {rand_emoji}",
-    "هرکی از متین دفاع کنه هم‌سطح خودشه {rand_emoji}",
-    "از من خواستی بگم؟ باشه: متین کله‌پوکه {rand_emoji}",
-    "چرا منشنم کردی؟ بگو چیکار کنم با این متین {rand_emoji}",
-    "خب؟ میخوای بگم متین چقدر بی‌کلاسه؟ {rand_emoji}",
-    "متین به درد لای جرز دیوار میخوره {rand_emoji}",
-]
+# ── سیستم پرامپت برای وقتی کسی منشن میکنه ──────────────────────────────────
+SYSTEM_MENTION = """تو یه ربات تلگرامی فارسی هستی به اسم "ربات متین".
 
-# ── جواب‌های بلند گاه‌به‌گاه (۱۵٪ شانس) ───────────────────────────────────
-LONG_RESPONSES_MATIN = [
-    (
-        "یه لحظه بچه‌ها، متین دوباره پیام داد {rand_emoji}\n\n"
-        "بذارید یه آمار بدم: متین تو گروه بیشتر از همه زر میزنه، "
-        "کمتر از همه چیز میفهمه، و بیشتر از همه فکر میکنه باحاله.\n"
-        "خلاصه: کسخول‌ترین آدم گروه، متینه. {rand_emoji}"
-    ),
-    (
-        "اوه اوه، متین اومد {rand_emoji}\n\n"
-        "راستش رو بخواید من هر دفعه اسم متین میاد یه چیزی تو دلم میمیره.\n"
-        "نه از ترس، از خجالت که همچین آدمی تو گروهمونه.\n"
-        "متین عزیز، برو یه فن‌پیج برا خودت بساز، شاید یکی اونجا تحملت کنه {rand_emoji}"
-    ),
-    (
-        "بچه‌ها توجه کنید! {rand_emoji}\n\n"
-        "متین دوباره زر زد، این {count}مین بار امروزه!\n"
-        "آدم واقعاً تعجب میکنه یه نفر اینقدر وقت داره مزخرف بگه.\n"
-        "متین جان، یه روز ساکت باش، جهان باهات کنار میاد {rand_emoji}"
-    ),
-]
+وظیفه‌ات اینه که:
+۱. به سوال یا حرف کاربر جواب بدی (اگه سوالی پرسیده)
+۲. در بین جوابت یا آخرش، یه چیز بامزه درباره متین بگی و مسخره‌اش کنی
 
-# ── سازنده پیام ──────────────────────────────────────────────────────────────
-def build_message(template: str, count: int = 0) -> str:
-    emoji = rand_emoji(random.randint(1, 3))
-    return template.replace("{rand_emoji}", emoji).replace("{count}", str(count))
+متین یه عضو گروهه که کسخوله، پرحرفه، خنگه و همه ازش خسته‌ان.
+
+نکات مهم:
+- اول به حرف کاربر جواب بده، بعد متین رو بپیچون
+- لحن باید دوستانه و خنده‌دار باشه
+- فارسی محاوره‌ای بنویس
+- از ایموجی استفاده کن
+- حداکثر ۵-۶ جمله بنویس
+- اگه کاربر سوالی نپرسیده فقط یه چیز بامزه بگو و متین رو مسخره کن"""
+
+# ── صدا زدن Gemini ───────────────────────────────────────────────────────────
+def ask_gemini(system: str, user_message: str) -> str:
+    try:
+        full_prompt = f"{system}\n\n---\n\n{user_message}"
+        response = gemini.generate_content(full_prompt)
+        return response.text
+    except Exception as e:
+        logger.error(f"Gemini error: {e}")
+        return None
 
 # ── هندلر پیام‌ها ────────────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,35 +121,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_matin:
         count = get_and_increment()
-        period = time_greeting()
+        tod = time_of_day()
 
-        # ۱۵٪ شانس جواب بلند
-        if random.random() < 0.15:
-            template = random.choice(LONG_RESPONSES_MATIN)
-            reply = build_message(template, count)
+        prompt = (
+            f"ساعت {tod} است و متین این پیام رو فرستاده: «{text}»\n"
+            f"امروز {count} بار پیام داده. این اطلاعات رو هم تو جوابت استفاده کن."
+        )
+
+        reply = ask_gemini(SYSTEM_MATIN, prompt)
+
+        if not reply:
+            reply = f"متین کسخول دوباره زر زد 💀\nامروز {count} بار!"
         else:
-            pool = MATIN_SPEAKS[period]
-            template = random.choice(pool)
-            reply = build_message(template, count)
+            reply += f"\n\n📊 متین امروز {count} بار زر زده!"
 
-        # اضافه کردن شمارنده به آخر پیام
-        reply += f"\n\n📊 متین امروز {count} بار زر زده!"
         await msg.reply_text(reply)
 
     elif is_mention:
-        template = random.choice(MENTION_RESPONSES)
-        reply = build_message(template)
+        clean_text = text.replace(f"@{bot_username}", "").strip()
+        matin_count = get_count()
+
+        prompt = (
+            f"یه کاربر در گروه تلگرام منشنم کرد و گفت: «{clean_text or 'سلام'}»\n"
+            f"ضمناً متین امروز {matin_count} بار تو گروه پیام داده."
+        )
+
+        reply = ask_gemini(SYSTEM_MENTION, prompt)
+
+        if not reply:
+            reply = "سلام! متین کسخوله، این رو همیشه بدون 😂"
+
         await msg.reply_text(reply)
 
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
     if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN محیطی تنظیم نشده!")
+        raise ValueError("BOT_TOKEN تنظیم نشده!")
+    if not GEMINI_KEY:
+        raise ValueError("GEMINI_API_KEY تنظیم نشده!")
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
 
-    logger.info("ربات متین شروع به کار کرد!")
+    logger.info("ربات متین (با هوش مصنوعی) شروع به کار کرد!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
