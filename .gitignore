@@ -1,0 +1,6 @@
+run.bat
+run_linux.sh
+.env
+matin_counter.json
+__pycache__/
+*.pyc
